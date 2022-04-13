@@ -86,7 +86,7 @@ def call_ema(id, suid='', message='', alarm='false', test=False, already_setup=[
     #not using this anymore
     elif message:
         suid, retrieval_object, qtype, message_sent, message_name = setup_message(message, test=test)
-
+    
     # time sending the prequestion
     start_time = time.time()
     # date and time format of the time the prequestion is sent
@@ -264,7 +264,7 @@ def connectionError_ema(empathid):
         db.close()
 
 
-def setup_message(message_name, test=False, caregiver_name='caregiver', care_recipient_name='care recipient',msd_time='0:00am'):
+def setup_message(message_name, test=False, caregiver_name='caregiver', care_recipient_name='care recipient',msd_time='0:00am',event_time=0):
     #default
     extra_morning_msg = False
 
@@ -336,6 +336,14 @@ def setup_message(message_name, test=False, caregiver_name='caregiver', care_rec
 
             #add image to message
             message = message + html_newline*2 + cntr + '<img src="' + image_url + '" style="'+image_style+'">' + end_cntr
+
+    #Adding how long ago caregivers were detected to be stressed
+    message_names_with_wait_time = 'daytime:check_in:reactive:1'
+    if (message_name == message_names_with_wait_time) and (event_time != 0):
+        message = message.replace(
+        "stressful situation.",
+        f"stressful situation about {str(event_time//60)} minutes ago."
+    )
 
     #Enjoyable activities
     if "[Load Dynamic Activities]" in message:
@@ -554,31 +562,3 @@ def load_choose_dynamic_enjoyable_activity(msg):
         log('Failed to load dynamic enjoyable activities. Using "Grab your activity box" instead',str(e))
     
     return message
-
-def add_event_time_in_msg(message_sent, message_name, event_time):
-    ''' Add the event time inside the messgae. Currently only focus on daytime:check_in:reactive:1 type of msg.
-    Param:
-        message_sent:  origin message content generated from the setup_message() function.
-        message_name:  message name, input from call_poll_ema() and reformated by setup_message().
-        event_name:    event time (in format of second) that need to be inserted into the message content.
-
-    Return:
-        message_sent_with_event_time:  new message content, with event time.
-    '''
-    
-    target_message_type = 'daytime:check_in:reactive:1'
-    message_sent_with_event_time = message_sent
-
-    if message_name == target_message_type:
-        # insert time into the message content (after the phrases 'stressful situation.')
-        try:
-            assert len(message_sent.split("stressful situation.")) == 2
-            if event_time != 0:
-                message_sent_with_event_time = message_sent.replace(
-                    "stressful situation.",
-                    "stressful situation about {} minutes ago.".format(int(event_time/60))
-                )
-        except Exception as e:
-            log('message content not able to add event time', str(e))
-
-    return message_sent_with_event_time

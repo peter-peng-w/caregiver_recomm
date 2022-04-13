@@ -13,7 +13,7 @@ from .alg import LinUCB
 from .scenario import Scenario
 from .stats import Stats
 from .log import log
-from .ema import call_ema, poll_ema, get_conn, setup_message, connectionError_ema, get_stop_polling, set_stop_polling, add_event_time_in_msg
+from .ema import call_ema, poll_ema, get_conn, setup_message, connectionError_ema, get_stop_polling, set_stop_polling
 from .time import Time
 from .proactive_model import generate_proactive_models, get_proactive_prediction
 from sendemail import sendemail as se  # change to actual path
@@ -1263,6 +1263,7 @@ class Recommender:
         refresh_poll_time = poll_time
         missed_msg_sent = 0 #only send missed msg once if never answered (default), send another time if second chance also no answer
         event_passed_time = 0
+        message_names_with_wait_time = 'daytime:check_in:reactive:1'
 
         # send message 'remind_amt' times if there is no answer
         while send_count < remind_amt:
@@ -1281,13 +1282,13 @@ class Recommender:
                     return None
 
             try:
-                # add event time in message content. if not need to add time, return value is same as input message_sent
-                stored_msg_sent_with_event_time = add_event_time_in_msg(
-                    message_sent=setup_lst[3],
-                    message_name=setup_lst[4],
-                    event_time=event_passed_time
-                )
-                setup_lst[4] = stored_msg_sent_with_event_time
+                # if certian message, add event time in message content by setting up message again. 
+                if setup_lst[4] == message_names_with_wait_time:
+                    #pass in the event time to add to the message and save the change to the message
+                    _, _, _, setup_lst[3], _ = setup_message(msg, test=self.test_mode,
+                                                caregiver_name=self.caregiver_name,
+                                                care_recipient_name=self.care_recipient_name, 
+                                                msd_time=missed_time, event_time=event_passed_time)
 
                 # returns empathid, the polling object (for different types of questions from ema_data), and question type
                 req_id, retrieval_object, qtype = call_ema(
@@ -1301,7 +1302,7 @@ class Recommender:
                                   freq=(poll_freq if not self.test_mode else 0.02), test_mode=self.test_mode)
 
                 # update event pass time as the duration of the poll_ema()
-                event_passed_time += (refresh_poll_time if not self.test_mode else 0.1)
+                event_passed_time += refresh_poll_time
             
             except Exception as e:
                 log('Call_ema or Poll_ema Error', str(e))
@@ -1355,7 +1356,6 @@ class Recommender:
                 refresh_poll_time = 600  # 10min
             elif send_count == 2:
                 refresh_poll_time = 1200  # 20min
-            
 
             #once sent x times and still no answer and msd msg has not been sent before, send missed message
             if (send_count == remind_amt) and (missed_msg_sent < 2):
