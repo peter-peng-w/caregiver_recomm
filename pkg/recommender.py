@@ -9,7 +9,7 @@ import numpy as np
 import random
 import os
 
-from .alg import LinUCB
+from .alg import LinUCB, MultiLinUCB
 from .scenario import Scenario
 from .stats import Stats
 from .log import log
@@ -52,6 +52,10 @@ GROUPS_QUEUE = [-1] #(Highest Priority) Group 2: Recomm request btn -> Group 1: 
 SAVED_KEYS = [False] #reset each day. [False, False, True] grows opposite to groups_queue since we use key pointer to associate sequence with key
 KEY_POINTER = 0 #reset each day.
 
+server_config = {'client_id': 0,
+                       'url': 'http://ec2-13-59-138-16.us-east-2.compute.amazonaws.com:8989'}
+
+
 class ServerModelAdaptor:
     def __init__(self, client_id=0, url='http://localhost:8000/'):
         self.proxy = xmlrpc.client.ServerProxy(url, allow_none=True)
@@ -62,14 +66,39 @@ class ServerModelAdaptor:
 
     def update(self, ctx, choice, reward):
         return self.proxy.update(self.client_id, ctx.tolist(), int(choice), int(reward))
+    
+    def get_tasks(self):
+        return self.proxy.get_tasks()
+    
+    def get_size(self):
+        return self.proxy.get_size()
+    
+    def get_alpha(self):
+        return self.proxy.get_alpha()
+    
+    def get_client_id(self, deployment_id):
+        global server_config
 
+        #update class client id
+        self.client_id = self.proxy.get_client_id(deployment_id)
+        #update client id in global dictionary
+        server_config['client_id'] = self.client_id
+
+        log('Client ID:', server_config['client_id'])
+
+        return self.client_id
+    
+    def get_arms(self, client_id, client_tasks, client_ctx_size, client_n_choices, client_alpha):
+        return self.proxy.get_arms(client_id, client_tasks, client_ctx_size, client_n_choices, client_alpha)
+
+    def check_sync(self, client_id, client_tasks, client_ctx_size, client_n_choices, client_alpha):
+        return self.proxy.check_sync(client_id, client_tasks, client_ctx_size, client_n_choices, client_alpha)
 
 class RemoteLocalBlender:
     def __init__(self, local_model, server_config):
         self.local_model = local_model
 
         log('Remote server:', server_config['url'])
-        log('Client ID:', server_config['client_id'])
         self.remote_model = ServerModelAdaptor(**server_config)
 
         self.remote_status = True
@@ -83,7 +112,7 @@ class RemoteLocalBlender:
             if not self.remote_status:
                 log('Rebuild remote server connection, switch to remote service')
                 self.remote_status = True
-
+                
         except (ConnectionRefusedError, http.client.CannotSendRequest):
             log('Server connection refused/http error')
             if self.remote_status:
@@ -111,26 +140,84 @@ class RemoteLocalBlender:
         if self.remote_status:
             return res
 
-        return self.local_model.act(*args, **kargs)
+        return self.local_model.act(server_config['client_id'],*args, **kargs)
 
     def update(self, *args, **kargs):
         res = self._remote(lambda: self.remote_model.update(*args, **kargs))
 
-        local_res = self.local_model.update(*args, **kargs)
+        local_res = self.update_local_model(*args, **kargs)
 
         return res if self.remote_status else local_res
 
+    def get_tasks(self, *args, **kargs):
+        res = self._remote(lambda: self.remote_model.get_tasks(*args, **kargs))
 
+        if self.remote_status:
+            return res
+
+        return None
+
+    def get_size(self, *args, **kargs):
+        res = self._remote(lambda: self.remote_model.get_size(*args, **kargs))
+
+        if self.remote_status:
+            return res
+
+        return None
+    
+    def get_alpha(self, *args, **kargs):
+        res = self._remote(lambda: self.remote_model.get_alpha(*args, **kargs))
+
+        if self.remote_status:
+            return res
+
+        return None
+    
+    def get_client_id(self, *args, **kargs):
+        res = self._remote(lambda: self.remote_model.get_client_id(*args, **kargs))
+
+        if self.remote_status:
+            return res
+
+        return None
+    
+    def create_local_model(self, server_tasks, server_ctx_size, server_n_choices, server_alpha, client_id):
+        if not (server_tasks == None or server_ctx_size == None or server_n_choices == None or server_alpha == None or client_id == None):
+            self.local_model = MultiLinUCB(server_ctx_size+server_n_choices, server_n_choices, server_tasks, alpha=server_alpha)
+        else:
+            log('Unable to update local model because of unavailable parameter:', server_tasks, server_ctx_size, server_n_choices, server_alpha, client_id)
+
+    def update_local_model(self, ctx, choice, reward):
+        return self.local_model.update(server_config['client_id'], ctx, choice, reward)
+
+    def get_remote_status(self):
+        return self.remote_status
+
+    def get_arms(self, client_id, client_tasks, client_ctx_size, client_n_choices, client_alpha):
+        arms = self._remote(lambda: self.remote_model.get_arms(client_id, client_tasks, client_ctx_size, client_n_choices, client_alpha))
+
+        if self.remote_status and (not (arms == None)):
+
+            #update the arms of the local model
+            return self.local_model.update_arms(np.array(arms), client_id, client_tasks, client_ctx_size, client_n_choices, client_alpha)
+
+        return None
+    
+    def check_sync(self, *args, **kargs):
+        res = self._remote(lambda: self.remote_model.check_sync(*args, **kargs))
+
+        if self.remote_status:
+            return res
+
+        return None
+    
+    
 # temporarily hardcode server config for easier integrate for not
 # temp_server_config = {'client_id': 0,
 #                       'url': 'http://hcdm4.cs.virginia.edu:8989'}
 
-temp_server_config = {'client_id': 0,
-                       'url': 'http://ec2-18-224-96-175.us-east-2.compute.amazonaws.com:8989'}
-
-
 class Recommender:
-    def __init__(self, evt_dim=5, mock=False, server_config=temp_server_config,
+    def __init__(self, evt_dim=5, mock=False, server_config=server_config,
                  mode='default', test=False, time_config=None, schedule_evt_test_config=None):
         log('-- -- -- -- -- -- Recommender System Start -- -- -- -- -- --')
         ctx_size = evt_dim + len(ACTIONS)
@@ -148,9 +235,9 @@ class Recommender:
             self.test_day_repeat = schedule_evt_test_config['day_repeat']
             self.test_week_repeat = schedule_evt_test_config['week_repeat']
 
-        self.model = LinUCB(ctx_size, len(ACTIONS), alpha=3.)
-        if server_config:
-            self.model = RemoteLocalBlender(self.model, server_config)
+        # self.model = LinUCB(ctx_size, len(ACTIONS), alpha=3.)
+        # if server_config:
+        #     self.model = RemoteLocalBlender(self.model, server_config)
 
         self.stats = Stats(len(ACTIONS), expire_after=1800)
 
@@ -184,7 +271,7 @@ class Recommender:
         #DeploymentInformation.db default info
         self.caregiver_name = 'caregiver'  # default
         self.care_recipient_name = 'care recipient'  # default
-        self.home_id = ''  # default
+        self.home_id = ''  # default (this is the deployment id)
         self.first_start_date = '' #default 
 
         #Proactive model
@@ -214,7 +301,19 @@ class Recommender:
         # get start time from Informationdeployment.db
         if not self.test_mode:
             self.timer.sleep(180) #wait for db to update
-            self.extract_deploy_info()    
+            self.extract_deploy_info()
+
+        #Default
+        self.model = MultiLinUCB(ctx_size, len(ACTIONS), 7, alpha=3.)
+        #Access and Imitate Server
+        if server_config:
+            #Default
+            self.server_tasks = self.server_ctx_size = self.server_n_choices = self.server_alpha = self.client_id = None
+            self.model = RemoteLocalBlender(self.model, server_config)
+            # Get all information from server
+            self.save_server_info()
+            # Create the local model MultiLinUCB according to server information
+            self.model.create_local_model(self.server_tasks, self.server_ctx_size, self.server_n_choices, self.server_alpha, self.client_id)
 
         if (not test) or (schedule_evt_test_config != None):
             # initialize _schedule_evt()
@@ -236,7 +335,43 @@ class Recommender:
             button_threat.daemon = True
             button_threat.start()
             self.button_threat = button_threat
-        
+
+    def save_server_info(self):
+        '''Save getters info from server model to Recommender class variables'''
+        try:
+            self.server_tasks = self.model.get_tasks()
+            self.server_ctx_size, self.server_n_choices = self.model.get_size()
+            self.server_alpha = self.model.get_alpha()
+            # if this deployment id does not exist on server, it will be added and the newly registered client id will be returned
+            self.client_id = self.model.get_client_id(self.home_id)
+            log(f'Server successfully accessed.')
+            log(f'Server tasks: {self.server_tasks}, Size & Choices: {self.server_ctx_size, self.server_n_choices}, Alpha: {self.server_alpha}, Client Id on Server: {self.client_id}')
+        except Exception as e:
+            log('URGENT Unable to get information from server:', e)
+            self.email_alerts('Save Server Info', e, 'Failure in save_server_info() function',
+                'Possible sources of error: EC2 Instance is Down, recomm_server.py is not running on EC2 Instance',
+                urgent=False)
+    
+    def sync_server_local(self):
+        '''Since local model and server model'''
+        try:
+            #check connection to server is up
+            if self.model.get_remote_status():
+                model_sync = self.model.check_sync(self.client_id, self.server_tasks, self.server_ctx_size, self.server_n_choices, self.server_alpha)
+
+                if model_sync == None:
+                    # Get all new information from server
+                    self.save_server_info()
+                    # Create the local model MultiLinUCB according to server information
+                    self.model.create_local_model(self.server_tasks, self.server_ctx_size, self.server_n_choices, self.server_alpha, self.client_id)
+
+                log('Model sync successfull.')
+        except Exception as e:
+            log('Model sync unsuccessfull:', e)
+            self.email_alerts('Sync Server and Local Model failure', e, 'Failure in sync_server_local() function',
+            'Possible sources of error: EC2 server not running, models do not have equal sizes.',
+            urgent=False)
+
     def cooldown_ready(self):
         #true when cooldown for recommendation message is over
         return self.timer.now() - self.last_action_time > self.action_cooldown
@@ -481,6 +616,11 @@ class Recommender:
                     action_idx, ucbs = self.model.act(ctx, return_ucbs=True, subset=PROACTIVE_ACTION_INDEX)
                 else: #allow all actions
                     action_idx, ucbs = self.model.act(ctx, return_ucbs=True)
+
+                #enjoyable2,7,8 have been deleted
+                deleted_action_ids = [15, 20, 21]
+                if action_idx in deleted_action_ids:
+                    action_idx = None
                 
                 if action_idx is None:
                     log('model gives no action')
@@ -582,6 +722,8 @@ class Recommender:
 
                 #else update model
                 log('reward retrieved', reward)
+                #sync models
+                self.sync_server_local()
                 self.model.update(ctx, action_idx, reward)
 
                 # update stats

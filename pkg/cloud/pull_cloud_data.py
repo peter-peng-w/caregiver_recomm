@@ -1,7 +1,7 @@
 from .rds import RDS
 
 table_name = "ema_storing_data"
-deployment_ids = ['6092021','7132021','8022021']
+deployment_ids = ['6092021','7132021','8022021','1172022','2182022','3162022']
 
 def connect2cloud(table_name):
     '''

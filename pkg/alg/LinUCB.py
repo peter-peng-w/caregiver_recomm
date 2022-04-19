@@ -131,7 +131,7 @@ class LinUCB:
       while added < raw_ctx_size:
         new_row = np.zeros(self.ctx_size)  
         #manually make identity
-        new_row[row_pointer] = self.lambda_ * 5  
+        new_row[row_pointer] = self.lambda_ * 1  
         arm['A'] = np.insert(arm['A'],row_pointer,new_row, axis=0)
         #go to the next row
         row_pointer+=1
@@ -142,5 +142,17 @@ class LinUCB:
 
     #save all modified arms
     self.arms = arms
+
+  def get_arms(self, client_id):
+    '''Return arms'''
+    return self.arms
+  
+  def update_arms(self, arms, client_id, client_tasks, client_raw_ctx_size, client_n_choices, client_alpha, server_tasks, server_raw_ctx_size):
+    '''update arms'''
+    if (server_raw_ctx_size == client_raw_ctx_size) and (client_n_choices == self.n_choices) and (client_alpha == self.alpha) and (client_tasks == server_tasks):
+      self.arms = arms
+      return 1
+
+    return None
 
   

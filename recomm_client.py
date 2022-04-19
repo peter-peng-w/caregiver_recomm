@@ -30,8 +30,8 @@ def act(*args, **kargs):
 
 server_config = {
     'client_id': 0,
-    'url': 'http://ec2-18-224-96-175.us-east-2.compute.amazonaws.com:8989'
-    }
+    'url': 'http://ec2-13-59-138-16.us-east-2.compute.amazonaws.com:8989'
+}
 
 proxy = xmlrpc.client.ServerProxy(server_config['url'], allow_none=True)
 
@@ -43,6 +43,7 @@ if __name__ == "__main__":
     action, UCBS = act(0,ctx.tolist(), True, None)
     print('Action:',action)
     print('UCBS:',ctx)
+    print(proxy.get_client_id('0272022'))
 
     #proxy.update(0, ctx.tolist(),2,1)
 
@@ -78,3 +79,5 @@ if __name__ == "__main__":
             if answer3.strip().upper() == 'Y':
                 #Needs credential file in folder of server-side code
                 proxy.import_data()
+    
+    

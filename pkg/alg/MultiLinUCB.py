@@ -48,3 +48,12 @@ class MultiLinUCB(LinUCB):
     self.n_tasks+=1
     #recompute
     self.sqrt_u = math.sqrt(self.n_tasks * self.lambda_1 / self.lambda_2)
+
+  def get_arms(self, client_id):
+    return super().get_arms(client_id)
+
+  def update_arms(self, arms, client_id, client_tasks, client_raw_ctx_size, client_n_choices, client_alpha):
+    #make sure valid client id
+    if not (client_id < (len(self.n_tasks)-1)):
+      return None
+    return super().update_arms(arms, client_id, client_tasks, client_raw_ctx_size, client_n_choices, client_alpha, self.n_tasks, self.raw_ctx_size)

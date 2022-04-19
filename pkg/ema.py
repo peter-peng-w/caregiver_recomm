@@ -543,7 +543,7 @@ def load_choose_dynamic_enjoyable_activity(msg):
         Assuming the first line of the file is the header file and is not an enjoyable activity
     '''
     #Default if no activity is loaded
-    message = 'grab your activity box' 
+    message = 'start an activity that you enjoy.' 
     try:
         with open('enjoyable_activities.txt') as file:
             #Read all non empty lines

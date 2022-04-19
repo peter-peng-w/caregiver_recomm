@@ -3829,3 +3829,14 @@
 [RECOMM] 2022-04-13 07:37:54     Recorded event in the ema_storing_data table
 [RECOMM] 2022-04-13 07:37:57     event below threshold. event filtered.
 [RECOMM] 2022-04-13 07:37:57     Recorded event in the ema_storing_data table
+[RECOMM] 2022-04-18 20:56:30     -- -- -- -- -- -- Recommender System Start -- -- -- -- -- --
+[RECOMM] 2022-04-18 20:56:30     Remote server: http://ec2-18-224-96-175.us-east-2.compute.amazonaws.com:8989
+[RECOMM] 2022-04-18 20:56:30     Client ID: 0
+[RECOMM] 2022-04-18 20:56:30     Read SQLite DB error: unable to open database file
+[RECOMM] 2022-04-18 20:56:33     Email alert sent about urgent error
+[RECOMM] 2022-04-18 20:56:33     Scheduled Events Initialized
+[RECOMM] 2022-04-18 20:56:33     Sleep till next schedule event: 2022-04-18 22:30:00
+[RECOMM] 2022-04-18 20:56:38     event below threshold. event filtered.
+[RECOMM] 2022-04-18 20:56:42     Record recommendation data error: (2003, "Can't connect to MySQL server on 'localhost' ([WinError 10061] No connection could be made because the target machine actively refused it)")
+[RECOMM] 2022-04-18 20:56:42     Event vector error in dispatch function: local variable 'db' referenced before assignment
+[RECOMM] 2022-04-18 20:56:44     Email alert sent about urgent error
