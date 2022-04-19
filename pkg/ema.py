@@ -33,7 +33,7 @@ def get_stop_polling():
     '''
     return STOP_POLLING
 
-def get_ip():
+def get_host_ip():
     '''
         get ip address and return it
     '''
@@ -45,6 +45,21 @@ def get_ip():
         host_ip = '191.168.0.107'
 
     return host_ip
+
+def get_phone_ip():
+    '''
+        Assuming can only have two IP addresses: 191.168.0.107 and 191.168.0.106 
+        Usually, the laptop ip address is 191.168.0.107 while the phone ip address is 191.168.0.106
+        However, this function checks that if the laptop ip address was whiched to 191.168.0.106 then the phone ip address will become 191.168.0.107
+    '''
+    host_ip = get_host_ip()
+
+    #check if host has taken phone ip address
+    if host_ip == '191.168.0.106':
+        return 'http://191.168.0.107:2226' #assume phone is now 107
+    else: #NORMAL CASE
+        return 'http://191.168.0.106:2226' #phone should always have this ip
+
 
 def get_conn():
     return pymysql.connect(host='localhost', user='root', password='', db='ema')
@@ -71,7 +86,7 @@ def call_ema(id, suid='', message='', alarm='false', test=False, already_setup=[
     #not using this anymore
     elif message:
         suid, retrieval_object, qtype, message_sent, message_name = setup_message(message, test=test)
-
+    
     # time sending the prequestion
     start_time = time.time()
     # date and time format of the time the prequestion is sent
@@ -79,13 +94,9 @@ def call_ema(id, suid='', message='', alarm='false', test=False, already_setup=[
 
     # items needed in url
     empathid = '999|' + str(int(time.time() * 100))
-    phone_url = 'http://191.168.0.106:2226' if not test else 'http://127.0.0.1:5000'
-    server_url = 'http://' + get_ip() + '/ema/ema.php'
+    phone_url = get_phone_ip() if not test else 'http://127.0.0.1:5000'
+    server_url = 'http://' + get_host_ip() + '/ema/ema.php'
     androidid = 'db7d3cdb88e1a62a'
-
-    #phone 3 and teamviewer 1668587541
-    #phone_url = 'http://191.168.0.106:2226'
-    #server_url = 'http://191.168.0.107/ema/ema.php'
 
     alarm = alarm
 
@@ -193,6 +204,7 @@ def poll_ema(id, empathid, action_idx, retrieve, question_type, duration=300, fr
                     # if answer is no '2' send recommendation, always send recommendation after textbox
                     if answer=='2' or question_type=='thanks':
                         answer = 0.0
+                    #-1 if no choice selected but moded to next question, -1.0 if not answered   
 
                 # time prequestion is received
                 end_time = time.time()
@@ -252,7 +264,7 @@ def connectionError_ema(empathid):
         db.close()
 
 
-def setup_message(message_name, test=False, caregiver_name='caregiver', care_recipient_name='care recipient',msd_time='0:00am'):
+def setup_message(message_name, test=False, caregiver_name='caregiver', care_recipient_name='care recipient',msd_time='0:00am',event_time=0):
     #default
     extra_morning_msg = False
 
@@ -320,10 +332,22 @@ def setup_message(message_name, test=False, caregiver_name='caregiver', care_rec
             #read image name and style for image from json file
             image_name,image_style = json_prompts['recomm_images'][r_type]
             #make image url with ip 191.168.0.107
-            image_url = 'http://' + get_ip() + '/ema_images/' + image_name
+            image_url = 'http://' + get_host_ip() + '/ema_images/' + image_name
 
             #add image to message
             message = message + html_newline*2 + cntr + '<img src="' + image_url + '" style="'+image_style+'">' + end_cntr
+
+    #Adding how long ago caregivers were detected to be stressed
+    message_names_with_wait_time = 'daytime:check_in:reactive:1'
+    if (message_name == message_names_with_wait_time) and (event_time != 0):
+        message = message.replace(
+        "stressful situation.",
+        f"stressful situation about {str(event_time//60)} minutes ago."
+    )
+
+    #Enjoyable activities
+    if "[Load Dynamic Activities]" in message:
+        message = load_choose_dynamic_enjoyable_activity(message)
 
     #Check if must add Audio addon sequence -------------
     if ('[AudioAddon: breathing]' in message) or ('[AudioAddon: bodyscan]' in message):
@@ -350,7 +374,7 @@ def setup_message(message_name, test=False, caregiver_name='caregiver', care_rec
         for audiofile in audiofiles_lst:
 
             #make audio url
-            audio_url = 'http://' + get_ip() + '/ema_images/' + audiofile
+            audio_url = 'http://' + get_host_ip() + '/ema_images/' + audiofile
 
             #find this audio file and format with html
             audioHTML_format = html_newline + html_newline + cntr + '<audio controls><source src="' + audio_url + '" type="audio/mpeg"></audio>' + end_cntr
@@ -513,3 +537,28 @@ def likert_dynamic_answers(msg,suid):
         db.close()
         return message
 
+def load_choose_dynamic_enjoyable_activity(msg):
+    '''Read the enjoyable_activities.txt file and randomly choose an enjoyable activity
+    
+        Assuming the first line of the file is the header file and is not an enjoyable activity
+    '''
+    #Default if no activity is loaded
+    message = 'grab your activity box' 
+    try:
+        with open('enjoyable_activities.txt') as file:
+            #Read all non empty lines
+            activities_lst = [line.strip() for line in file if line.strip()]
+
+        if len(activities_lst) > 1:
+            #Start at index 1 to not include the header of the file
+            random_activity = random.randint(1,len(activities_lst)-1)
+
+            message = msg.replace('[Load Dynamic Activities]',activities_lst[random_activity])
+        else:
+            message = msg.replace('[Load Dynamic Activities]',message)
+            log('Dynamic Enjoyable Activities Text File is Empty. Using default activity.')
+
+    except Exception as e:
+        log('Failed to load dynamic enjoyable activities. Using "Grab your activity box" instead',str(e))
+    
+    return message
