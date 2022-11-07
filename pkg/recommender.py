@@ -16,7 +16,7 @@ from .log import log
 from .ema import call_ema, poll_ema, get_conn, setup_message, connectionError_ema, get_stop_polling, set_stop_polling
 from .time import Time
 from .proactive_model import generate_proactive_models, get_proactive_prediction
-from sendemail import sendemail as se  # change to actual path
+# from sendemail import sendemail as se  # change to actual path
 
 #If changed must update n_choices in recomm_server.py
 ACTIONS = ['timeout:1', 'timeout:2', 'timeout:3', 'timeout:4', 'timeout:5', 'timeout:6', 'timeout:7', 'timeout:8',
@@ -2188,12 +2188,12 @@ class Recommender:
 
                 subject = 'DAILY: Home [' + self.home_id + '] Base station'  # CRITICAL, ALERT, NOTIFICATION
 
-                semail = se.sendemail()
-                msg = semail.emailMsg(subject, self.home_id, self.email_sched_source, self.email_sched_error,
-                                      self.email_sched_message, self.email_sched_explanation, contact)
+                # semail = se.sendemail()
+                # msg = semail.emailMsg(subject, self.home_id, self.email_sched_source, self.email_sched_error,
+                #                       self.email_sched_message, self.email_sched_explanation, contact)
 
-                semail.send(msg)
-                log('Email alert sent about today\'s list of errors')
+                # semail.send(msg)
+                # log('Email alert sent about today\'s list of errors')
 
                 # reset
                 self.email_sched_count = 1
@@ -2205,10 +2205,10 @@ class Recommender:
             elif urgent:
                 subject = 'URGENT: Home [' + self.home_id + '] Base station'  # CRITICAL, ALERT, NOTIFICATION
 
-                semail = se.sendemail()
-                msg = semail.emailMsg(subject, self.home_id, source, error, message, explanation, contact)
-                semail.send(msg)
-                log('Email alert sent about urgent error')
+                # semail = se.sendemail()
+                # msg = semail.emailMsg(subject, self.home_id, source, error, message, explanation, contact)
+                # semail.send(msg)
+                # log('Email alert sent about urgent error')
             else:
                 # store for later if not urgent
                 self.email_sched_source = self.email_sched_source + '\n' + str(self.email_sched_count) + '. ' + source
