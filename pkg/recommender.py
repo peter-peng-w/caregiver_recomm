@@ -553,9 +553,13 @@ class Recommender:
                 log(f'Reactive Trigger. Reactive messages sent today {REACTIVE_MESSAGES_SENT_TODAY} >= max reactive messages {MAX_REACTIVE_MESSAGES}. Reactive event rejected')
                 self.record_rejected_event(speaker_id,evt,reactive,trigger) #upload event to ema_storing_data table
                 return
-            # if speakerID is not 0 and there is no requestbutton
-            if (speaker_id >= 1 and requestButton is not True):
-                log(f'Reactive Trigger. Reactive message is not triggered by the request button and speaker id is not 0. Reactive event rejected')
+            # if speakerID is not 0 (and there is no requestbutton)
+            # if (speaker_id >= 1 and requestButton is not True):
+            #     log(f'Reactive Trigger. Reactive message is not triggered by the request button and speaker id is not 0. Reactive event rejected')
+            #     self.record_rejected_event(speaker_id,evt,reactive,trigger) #upload event to ema_storing_data table
+            #     return
+            if (speaker_id >= 1):
+                log(f'Reactive Trigger. Reactive message triggered but speaker id is not 0. Reactive event rejected')
                 self.record_rejected_event(speaker_id,evt,reactive,trigger) #upload event to ema_storing_data table
                 return
             # if there have been previous recommendation sent, make sure not in cooldown period
