@@ -15,10 +15,11 @@ import socket
 import base64
 from .log import log
 
-#get diretory path
+# get diretory path
 DIR_PATH = os.path.dirname(__file__)
 
-STOP_POLLING = False #true when need to stop polling
+STOP_POLLING = False    # true when need to stop polling
+
 
 def set_stop_polling(TF):
     '''
@@ -27,11 +28,13 @@ def set_stop_polling(TF):
     global STOP_POLLING
     STOP_POLLING = TF
 
+
 def get_stop_polling():
     '''
         Return value of stop_polling
     '''
     return STOP_POLLING
+
 
 def get_host_ip():
     '''
@@ -39,32 +42,52 @@ def get_host_ip():
     '''
     try:
         host_name = socket.gethostname()
+        # Translate a host name to IPv4 address format.
+        # The IPv4 address is returned as a string
         host_ip = socket.gethostbyname(host_name)
-    except:
+    except Exception:
         print("Unable to get Hostname and IP")
+        # This is the default host ip
         host_ip = '191.168.0.107'
 
     return host_ip
 
+
 def get_phone_ip():
     '''
-        Assuming can only have two IP addresses: 191.168.0.107 and 191.168.0.106 
+        Assuming can only have two IP addresses: 191.168.0.107 and 191.168.0.106
         Usually, the laptop ip address is 191.168.0.107 while the phone ip address is 191.168.0.106
-        However, this function checks that if the laptop ip address was whiched to 191.168.0.106 then the phone ip address will become 191.168.0.107
+        However, this function checks that if the laptop ip address was whiched to 191.168.0.106
+        then the phone ip address will become 191.168.0.107
     '''
-    host_ip = get_host_ip()
+    host_ip = get_host_ip()     # Get the Host(Laptop)'s IP
 
-    #check if host has taken phone ip address
+    # Check if host has taken phone ip address, then we need to switch it.
     if host_ip == '191.168.0.106':
-        return 'http://191.168.0.107:2226' #assume phone is now 107
-    else: #NORMAL CASE
-        return 'http://191.168.0.106:2226' #phone should always have this ip
+        # Abnormal Case. Need to set the phone ip to be 191.168.0.107
+        return 'http://191.168.0.107:2226'      # assume phone is now 107
+    else:
+        # Normal Case. Phone ip should be 191.168.0.106
+        return 'http://191.168.0.106:2226'      # phone should always have this ip
 
 
 def get_conn():
+    '''
+        Setup connection with the local database (host on wampserver)
+    '''
     return pymysql.connect(host='localhost', user='root', password='', db='ema')
 
-def call_ema(id, suid='', message='', alarm='false', test=False, already_setup=[], reactive=0,snd_cnt=1):
+
+def call_ema(
+    id,
+    suid='',
+    message='',
+    alarm='false',
+    test=False,
+    already_setup=[],
+    reactive=0,
+    snd_cnt=1
+):
     '''
     reactive: whether message is proactive (0) or reactive (1). Only recommendations can be 1, other messages are 0
     snd_cnt: Number of times the same messages is re-tried to send.  First time message is sent = 1.
@@ -72,7 +95,7 @@ def call_ema(id, suid='', message='', alarm='false', test=False, already_setup=[
     speaker id is always default to 9. If acoustic system is the trigger, that speaker id is used
     '''
 
-    #default
+    # default
     message_sent = ''
     choices_sent = ''
     message_name = ''
@@ -83,10 +106,10 @@ def call_ema(id, suid='', message='', alarm='false', test=False, already_setup=[
 
     if already_setup:
         suid, retrieval_object, qtype, message_sent, message_name = already_setup
-    #not using this anymore
+    # not using this anymore
     elif message:
         suid, retrieval_object, qtype, message_sent, message_name = setup_message(message, test=test)
-    
+
     # time sending the prequestion
     start_time = time.time()
     # date and time format of the time the prequestion is sent
@@ -96,7 +119,7 @@ def call_ema(id, suid='', message='', alarm='false', test=False, already_setup=[
     empathid = '999|' + str(int(time.time() * 100))
     phone_url = get_phone_ip() if not test else 'http://127.0.0.1:5000'
     server_url = 'http://' + get_host_ip() + '/ema/ema.php'
-    androidid = 'db7d3cdb88e1a62a'
+    androidid = 'db7d3cdb88e1a62a'      # TODO: Why this is pre-defined?
 
     alarm = alarm
 
@@ -110,22 +133,29 @@ def call_ema(id, suid='', message='', alarm='false', test=False, already_setup=[
         'empathid': empathid,
         'alarm': alarm
     }
-    q_dict_string = urllib.parse.quote(json.dumps(
-        url_dict), safe=':={}/')  # encoding url quotes become %22
+    q_dict_string = urllib.parse.quote(json.dumps(url_dict), safe=':={}/')  # encoding url quotes become %22
     url = phone_url + '/?q=' + q_dict_string
 
-
     # connect to database for logging
-    if suid != '995':#do not log blank question (empath is too fast duplicate)
+    if suid != '995':   # do not log blank question (empath is too fast duplicate)
         try:
-            db = get_conn()
-            cursor = db.cursor()
+            db = get_conn()         # get connection to the 'ema' database
+            cursor = db.cursor()    # get cursor of the database
 
-            insert_query = "INSERT INTO reward_data(speakerID,empathid,TimeSent,suid,TimeReceived,Response,Question,QuestionType,QuestionName,Reactive,SentTimes,ConnectionError,Uploaded) \
-                                  VALUES ('%s','%s','%s','%s','%s', '%s','%s','%s','%s','%s','%s','%s','%s')" % \
-                           (str(id),empathid, time_sent, suid, 'NA', -1.0,message_sent,qtype,message_name,reactive,snd_cnt,0,0)
-            cursor.execute(insert_query)
-            db.commit()
+            # Construact insertion query to add data into reward_data table
+            insert_query = "INSERT INTO reward_data( \
+                speakerID,empathid,TimeSent,suid,TimeReceived, \
+                Response,Question,QuestionType,QuestionName, \
+                Reactive,SentTimes,ConnectionError,Uploaded) \
+                VALUES ('%s','%s','%s','%s','%s', '%s','%s','%s','%s','%s','%s','%s','%s')" % \
+                (
+                    str(id), empathid, time_sent, suid, 'NA',
+                    -1.0, message_sent, qtype, message_name,
+                    reactive, snd_cnt, 0, 0
+                )
+            cursor.execute(insert_query)        # Execute insertion query
+            db.commit()                         # push newly updated content to db
+
         except Exception as err:
             log('Failed to log ema request:', str(err))
             db.rollback()

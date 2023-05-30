@@ -18,42 +18,44 @@ from .time import Time
 from .proactive_model import generate_proactive_models, get_proactive_prediction
 # from sendemail import sendemail as se  # change to actual path
 
-#If changed must update n_choices in recomm_server.py
-ACTIONS = ['timeout:1', 'timeout:2', 'timeout:3', 'timeout:4', 'timeout:5', 'timeout:6', 'timeout:7', 'timeout:8',
-           'timeout:9',
-           'breathing:1', 'breathing:2', 'breathing:3', 
+# If changed must update n_choices in recomm_server.py
+ACTIONS = ['timeout:1', 'timeout:2', 'timeout:3', 'timeout:4', 'timeout:5',
+           'timeout:6', 'timeout:7', 'timeout:8', 'timeout:9',
+           'breathing:1', 'breathing:2', 'breathing:3',
            'bodyscan:1', 'bodyscan:2',
            'enjoyable:1', 'enjoyable:2', 'enjoyable:3', 'enjoyable:4', 'enjoyable:5',
            'enjoyable:6', 'enjoyable:7', 'enjoyable:8', 'enjoyable:9']
 
-#lst of indices allowed for proactive actions
-PROACTIVE_ACTION_INDEX = [n for n,i in enumerate(ACTIONS) if ('breathing' in i) or ('bodyscan' in i)]
+# list of indices allowed for proactive actions, only breathing and bodyscan actions
+PROACTIVE_ACTION_INDEX = [n for n, i in enumerate(ACTIONS) if ('breathing' in i) or ('bodyscan' in i)]
 
-#Max messages
+# Max messages, proactive and reactive messages have maximum limitation per day
 MAX_MESSAGES = 4
-MAX_REACTIVE_MESSAGES = MAX_MESSAGES + 2
-REACTIVE_MESSAGES_SENT_TODAY = 0
-MAX_PROACTIVE_MESSAGES = MAX_MESSAGES
-PROACTIVE_MESSAGES_SENT_TODAY = 0
+MAX_REACTIVE_MESSAGES = MAX_MESSAGES + 2    # MAX number of reactive messages
+REACTIVE_MESSAGES_SENT_TODAY = 0            # Counter of number of reactive messages per day
+MAX_PROACTIVE_MESSAGES = MAX_MESSAGES       # MAX number of proactive messages
+PROACTIVE_MESSAGES_SENT_TODAY = 0           # Counter of number of proactive messages per day
 
-COOLDOWN_TIME = 1800 #30 min
-BASELINE_TIME = 1814400 #3 weeks
-CURRENT_RECOMM_CATEGORY = ''
-DAILY_RECOMM_DICT = {}
-EXTRA_ENCRGMNT = ''
-DEFAULT_SPEAKERID = 9 #when not triggered by acoustic
-#save triggers list (used in ema storing data table), we have double these categories since each can have ' rejected' added to them
-TRIGGERS_DICT = {0:'acoustic', 1:'recomm request button', 2:'baseline random', 3: 'proactive model', 4:'random'} 
+COOLDOWN_TIME = 1800                # 30 min
+BASELINE_TIME = 1814400             # 3 weeks
+CURRENT_RECOMM_CATEGORY = ''        # 
+DAILY_RECOMM_DICT = {}              # 
+EXTRA_ENCRGMNT = ''                 #
+DEFAULT_SPEAKERID = 9               # 9: default. 0: care-giver. 1: patient
+
+# save triggers list (used in ema storing data table), we have double these categories since each can have 'rejected' added to them
+TRIGGERS_DICT = {0: 'acoustic', 1: 'recomm request button', 2: 'baseline random', 3: 'proactive model', 4: 'random'}
 DIR_PATH = os.path.dirname(__file__)
-GROUPS_QUEUE = [-1] #(Highest Priority) Group 2: Recomm request btn -> Group 1: Other Reactive Messages -> Group 0: All others (random) -> -1 nothing currently in queue
-#[1,-1,2,-1] most recent group goes in the front. If no group currently in service, front will be -1. Reset each day to [-1]
-#[current state, previous, previous, previous...]
-#each sequence has a pointer to a key. True/False. If false then return and dont sent any messages in this sequence. It has expired. Helps for sleeping 30-60min
-SAVED_KEYS = [False] #reset each day. [False, False, True] grows opposite to groups_queue since we use key pointer to associate sequence with key
-KEY_POINTER = 0 #reset each day.
+# (Highest Priority) Group 2: Recomm request btn -> Group 1: Other Reactive Messages -> Group 0: All others (random) -> -1 nothing currently in queue
+GROUPS_QUEUE = [-1]     # priority queue
+# [1,-1,2,-1] most recent group goes in the front. If no group currently in service, front will be -1. Reset each day to [-1]
+# [current state, previous, previous, previous...]
+# each sequence has a pointer to a key. True/False. If false then return and dont sent any messages in this sequence. It has expired. Helps for sleeping 30-60min
+SAVED_KEYS = [False]    # reset each day. [False, False, True] grows opposite to groups_queue since we use key pointer to associate sequence with key
+KEY_POINTER = 0         # reset each day.
 
 server_config = {'client_id': 0,
-                       'url': 'http://ec2-13-59-138-16.us-east-2.compute.amazonaws.com:8989'}
+                 'url': 'http://ec2-13-59-138-16.us-east-2.compute.amazonaws.com:8989'}
 
 
 class ServerModelAdaptor:
@@ -93,6 +95,7 @@ class ServerModelAdaptor:
 
     def check_sync(self, client_id, client_tasks, client_ctx_size, client_n_choices, client_alpha):
         return self.proxy.check_sync(client_id, client_tasks, client_ctx_size, client_n_choices, client_alpha)
+
 
 class RemoteLocalBlender:
     def __init__(self, local_model, server_config):
@@ -210,28 +213,36 @@ class RemoteLocalBlender:
             return res
 
         return None
-    
-    
+
 # temporarily hardcode server config for easier integrate for not
 # temp_server_config = {'client_id': 0,
 #                       'url': 'http://hcdm4.cs.virginia.edu:8989'}
 
-class Recommender:
-    def __init__(self, evt_dim=5, mock=False, server_config=server_config,
-                 mode='default', test=False, time_config=None, schedule_evt_test_config=None):
-        log('-- -- -- -- -- -- Recommender System Start -- -- -- -- -- --')
-        ctx_size = evt_dim + len(ACTIONS)
-        self.action_cooldown = timedelta(seconds=COOLDOWN_TIME)
 
-        self.test_mode = test
-        if time_config != None:
+class Recommender:
+    def __init__(
+        self,
+        evt_dim=5,
+        mock=False,
+        server_config=server_config,
+        mode='default',
+        test=False,
+        time_config=None,
+        schedule_evt_test_config=None
+    ):
+        log('-- -- -- -- -- -- Recommender System Start -- -- -- -- -- --')
+        ctx_size = evt_dim + len(ACTIONS)                           # context := sentiment + action counter
+        self.action_cooldown = timedelta(seconds=COOLDOWN_TIME)     # action cooldown time. default: 30 mins
+        self.test_mode = test                                       # whether this is the test mode. default: false
+
+        if time_config is not None:
             self.timer = Time(time_config['scale'],
                               time_config['fake_start'],
                               time_config['start_hr'], 0, 0)
         else:
-            self.timer = Time(1)
+            self.timer = Time(1)        # vanilla timer
 
-        if test and schedule_evt_test_config != None:
+        if test and schedule_evt_test_config is not None:
             self.test_day_repeat = schedule_evt_test_config['day_repeat']
             self.test_week_repeat = schedule_evt_test_config['week_repeat']
 
@@ -247,19 +258,19 @@ class Recommender:
         if self.mock:
             self.mock_scenario = Scenario(evt_dim, len(ACTIONS))
 
-        #save dimensions of event array
+        # Save dimensions of event array
         self.event_dimension = evt_dim
 
-        #Time defaults, cooldown and baseline
+        # Time defaults, cooldown and baseline
         self.last_action_time = self.timer.now().replace(year=2000)
         self.baseline_start = self.timer.now()
         self.baseline_period = timedelta(seconds=BASELINE_TIME)
 
-        #control threads
-        self.recomm_start = False  # based on scheduled evts
-        self.recomm_in_progress = False  # true when recomm currently in progress
+        # Control threads
+        self.recomm_start = False           # based on scheduled evts
+        self.recomm_in_progress = False     # true when recomm currently in progress
         self.sched_initialized = False
-        self.stop_questions = False  # after 3 retries, dont send the rest of the series
+        self.stop_questions = False         # after 3 retries, dont send the rest of the series
 
         # email alerts defaults
         self.email_sched_count = 1
@@ -268,30 +279,31 @@ class Recommender:
         self.email_sched_message = ''
         self.email_sched_explanation = ''
 
-        #DeploymentInformation.db default info
-        self.caregiver_name = 'caregiver'  # default
-        self.care_recipient_name = 'care recipient'  # default
-        self.home_id = ''  # default (this is the deployment id)
-        self.first_start_date = '' #default 
+        # DeploymentInformation.db default info
+        self.caregiver_name = 'caregiver'               # default
+        self.care_recipient_name = 'care recipient'     # default
+        self.home_id = ''                               # default (this is the deployment id)
+        self.first_start_date = ''                      # default
 
-        #Proactive model
+        # Proactive model
         self.proactive_model = None
 
-        #affirmation messages
-        self.num_sent_affirmation_msgs = 0 #reset daily to 0
+        # affirmation messages
+        self.num_sent_affirmation_msgs = 0              # reset daily to 0
 
         # ema keywords
         self.emaTrue = 'true'
         self.emaFalse = 'false'
 
-        #random generations
+        # random generations
         self.randgeneration = True
 
-        #recommendation request button
-        self.request_recomm_button = True #if button thread should be activated
-        self.need_button_on = True #true whenever the button should be displayed
+        # recommendation request button
+        self.request_recomm_button = True               # if button thread should be activated
+        self.need_button_on = True                      # true whenever the button should be displayed
 
-        #allow messages to be sent after evening messages until midnight (only set to true manually for some specific deployments)
+        # allow messages to be sent after evening messages until midnight
+        # (only set to true manually for some specific deployments)
         self.allow_after_hours_messages = False
 
         # Default start and end time
@@ -300,8 +312,8 @@ class Recommender:
 
         # get start time from Informationdeployment.db
         if not self.test_mode:
-            self.timer.sleep(180) #wait for db to update
-            self.extract_deploy_info()
+            self.timer.sleep(180)       # sleep 3 mins, wait for db to update (why we need this?)
+            self.extract_deploy_info()  #
 
         #Default
         self.model = MultiLinUCB(ctx_size, len(ACTIONS), 7, alpha=3.)
@@ -431,8 +443,6 @@ class Recommender:
                 log(f'Sleep for: {seconds_to_sleep//60} minutes before checking if request button should be placed on screen')
             #after you send it, wait X min to check if you can put the button back on
             time.sleep(seconds_to_sleep) 
-    
-
 
     def dispatch(self, speaker_id, evt, reactive=1,requestButton=False, trigger=TRIGGERS_DICT[0], internal=0):
         '''
@@ -445,7 +455,6 @@ class Recommender:
             internal: (1) any trigger type event from recommender system, (0) any trigger type event from external system
         '''
         global GROUPS_QUEUE, SAVED_KEYS, KEY_POINTER
-
 
         # ----- Sanity Checks for Safety of Recomm System -----------------------------------
         # system must be initialized
@@ -890,7 +899,6 @@ class Recommender:
 
         # return the empath id
         return req_id, reactive_check_in1_answer
-    
 
     def record_rejected_event(self,speaker_id,evt,reactive,trigger):
         '''
@@ -918,7 +926,6 @@ class Recommender:
             'baseline_period': rejected_baseline_period, #0 or 1
             'reactive_check_in': 0, #this question was not sent
         })
-
 
     def record_data(self, data):
         if self.mock:
@@ -1684,7 +1691,6 @@ class Recommender:
             GROUPS_QUEUE.insert(0,-1) 
         return
 
-
     def baseline_schedule_evt(self,event_id):
         """
         scheduled events for the baseline period
@@ -2259,5 +2265,10 @@ class Recommender:
         SAVED_KEYS = [False] 
         KEY_POINTER = 0 
 
+    def send_proxy_messages_to_phone(self):
+        ''' Sending proxy messages to phone to test the connection between laptop and phone
+        '''
+        
+        pass
 
 
